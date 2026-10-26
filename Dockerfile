@@ -10,6 +10,7 @@ RUN mkdir -p /var/cache/bind /var/lib/bind /run/named && \
     chown -R bind:bind /var/cache/bind /var/lib/bind /run/named
 
 COPY named.conf /etc/bind/named.conf
+COPY named.conf.local /etc/bind/named.conf.local
 
 EXPOSE 53/tcp 53/udp
 
