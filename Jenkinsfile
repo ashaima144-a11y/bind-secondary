@@ -1,9 +1,11 @@
-
 pipeline {
-    agent { label 'podman' }
+    agent {
+        label 'podman'
+    }
 
     options {
         skipDefaultCheckout(true)
+        disableConcurrentBuilds()
     }
 
     environment {
@@ -25,7 +27,8 @@ pipeline {
         stage('Build') {
             steps {
                 sh '''
-                    podman build -t "$IMAGE:$TAG" .
+                    set -eu
+                    podman build --pull=missing -t "$IMAGE:$TAG" .
                 '''
             }
         }
@@ -33,15 +36,30 @@ pipeline {
         stage('Scan') {
             steps {
                 sh '''
-                    rc=0
-                    rm -f image.tar
+                    set -eu
+
+                    rm -f image.tar trivy-report.txt
+
                     podman save -o image.tar "$IMAGE:$TAG"
-                    trivy image --timeout 40m --input image.tar --scanners vuln \
-                      --severity HIGH,CRITICAL --ignore-unfixed \
-                      --exit-code 1 --format table \
-                      --output trivy-report.txt || rc=$?
-                    cat trivy-report.txt
+
+                    rc=0
+
+                    trivy image \
+                        --timeout 40m \
+                        --input image.tar \
+                        --scanners vuln \
+                        --severity HIGH,CRITICAL \
+                        --ignore-unfixed \
+                        --exit-code 1 \
+                        --format table \
+                        --output trivy-report.txt || rc=$?
+
+                    if [ -f trivy-report.txt ]; then
+                        cat trivy-report.txt
+                    fi
+
                     rm -f image.tar
+
                     exit "$rc"
                 '''
             }
@@ -49,18 +67,25 @@ pipeline {
 
         stage('Push') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'registry-login',
-                    usernameVariable: 'REG_USER',
-                    passwordVariable: 'REG_PASS'
-                )]) {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'registry-login',
+                        usernameVariable: 'REG_USER',
+                        passwordVariable: 'REG_PASS'
+                    )
+                ]) {
                     sh '''
-                        echo "$REG_PASS" | podman login \
-                          registry.assign.sali358.300.ops:5000 \
-                          -u "$REG_USER" --password-stdin
+                        set -eu
+
+                        printf '%s' "$REG_PASS" | podman login \
+                            registry.assign.sali358.300.ops:5000 \
+                            --username "$REG_USER" \
+                            --password-stdin
 
                         podman push "$IMAGE:$TAG"
-                        podman logout registry.assign.sali358.300.ops:5000
+
+                        podman logout \
+                            registry.assign.sali358.300.ops:5000
                     '''
                 }
             }
@@ -69,8 +94,10 @@ pipeline {
 
     post {
         always {
-            archiveArtifacts artifacts: 'trivy-report.txt',
+            archiveArtifacts(
+                artifacts: 'trivy-report.txt',
                 allowEmptyArchive: true
+            )
         }
     }
 }
