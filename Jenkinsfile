@@ -34,6 +34,7 @@ pipeline {
             steps {
                 sh '''
                     rc=0
+                    rm -f image.tar
                     podman save -o image.tar "$IMAGE:$TAG"
                     trivy image --timeout 40m --input image.tar --scanners vuln \
                       --severity HIGH,CRITICAL --ignore-unfixed \
