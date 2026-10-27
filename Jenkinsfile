@@ -35,7 +35,7 @@ pipeline {
                 sh '''
                     rc=0
                     podman save -o image.tar "$IMAGE:$TAG"
-                    trivy image --input image.tar --scanners vuln \
+                    trivy image --timeout 40m --input image.tar --scanners vuln \
                       --severity HIGH,CRITICAL --ignore-unfixed \
                       --exit-code 1 --format table \
                       --output trivy-report.txt || rc=$?
